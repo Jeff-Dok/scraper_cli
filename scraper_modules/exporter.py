@@ -88,32 +88,60 @@ def save_bytes(content: bytes, folder: Path, filename: str) -> Path:
 
 
 def save_mhtml(html: str, url: str, folder: Path, filename: str) -> Path:
-    """Sauvegarde le HTML sous forme MHTML simple (RFC 2557, sans ressources embarquées).
+    """Fallback MHTML (RFC 2557) : URLs absolues + quoted-printable. Utilisé si Playwright indisponible."""
+    import quopri
+    from bs4 import BeautifulSoup
+    from urllib.parse import urljoin as _urljoin
 
-    Comportement snapshot : si le fichier existe déjà, il est retourné tel quel
-    sans vérification de contenu (contrairement à save_text/save_json).
-    """
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / filename
     if path.exists():
         return path
+
     safe_url = url.replace('\r', '').replace('\n', '')
-    boundary = f'----=_NextPart_{hashlib.md5(html.encode()).hexdigest()[:12]}'
-    content = (
-        f'MIME-Version: 1.0\r\n'
-        f'Content-Type: multipart/related; type="text/html"; boundary="{boundary}"\r\n'
-        f'Snapshot-Content-Location: {safe_url}\r\n'
-        f'\r\n'
-        f'--{boundary}\r\n'
-        f'Content-Type: text/html; charset=UTF-8\r\n'
-        f'Content-Transfer-Encoding: 8bit\r\n'
-        f'Content-Location: {safe_url}\r\n'
-        f'\r\n'
-        f'{html}\r\n'
-        f'\r\n'
-        f'--{boundary}--\r\n'
-    )
-    path.write_text(content, encoding='utf-8')
+    base_scheme = urlparse(url).scheme
+
+    soup = BeautifulSoup(html, 'html.parser')
+    for tag in soup.find_all(True):
+        for attr in ('href', 'src', 'action'):
+            val = (tag.get(attr) or '').strip()
+            if not val or val.startswith(('http://', 'https://', 'data:', 'blob:', '#', 'javascript:')):
+                continue
+            tag[attr] = f'{base_scheme}:{val}' if val.startswith('//') else _urljoin(url, val)
+        srcset = (tag.get('srcset') or '').strip()
+        if srcset:
+            chunks = []
+            for chunk in srcset.split(','):
+                pieces = chunk.strip().split()
+                if pieces:
+                    v = pieces[0]
+                    if not v.startswith(('http://', 'https://', 'data:', 'blob:')):
+                        v = f'{base_scheme}:{v}' if v.startswith('//') else _urljoin(url, v)
+                    pieces[0] = v
+                chunks.append(' '.join(pieces))
+            tag['srcset'] = ', '.join(chunks)
+    html_abs = str(soup)
+
+    html_qp = quopri.encodestring(html_abs.encode('utf-8')).decode('ascii').replace('\n', '\r\n')
+    boundary = f'----=_NextPart_{hashlib.md5(html_abs.encode()).hexdigest()[:12]}'
+
+    content = b''.join([
+        b'From: <Saved by scraper>\r\n',
+        f'Snapshot-Content-Location: {safe_url}\r\n'.encode(),
+        b'MIME-Version: 1.0\r\n',
+        f'Content-Type: multipart/related; type="text/html"; boundary="{boundary}"\r\n'.encode(),
+        b'\r\n',
+        f'--{boundary}\r\n'.encode(),
+        b'Content-Type: text/html; charset=UTF-8\r\n',
+        b'Content-Transfer-Encoding: quoted-printable\r\n',
+        f'Content-Location: {safe_url}\r\n'.encode(),
+        b'\r\n',
+        html_qp.encode('ascii'),
+        b'\r\n--',
+        boundary.encode(),
+        b'--\r\n',
+    ])
+    path.write_bytes(content)
     return path
 
 

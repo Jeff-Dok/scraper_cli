@@ -6,10 +6,10 @@ from urllib.parse import urlparse, urljoin, unquote, parse_qs
 import requests
 from bs4 import BeautifulSoup
 
-from .downloader import (fetch, extract_text, extract_structured,
+from .downloader import (fetch, extract_text, extract_text_md, extract_structured,
                          extract_image_urls, extract_video_urls, extract_audio_urls,
                          extract_document_urls, extract_archive_urls,
-                         download_assets, HEADERS, TIMEOUT)
+                         HEADERS, TIMEOUT)
 from .exporter import save_text, save_json, save_csv, save_bytes, url_to_page_dest, save_mhtml
 from .session import is_partial, MIN_SIZE_VIDEO_AUDIO, MIN_SIZE_DOC_ARCHIVE
 
@@ -478,10 +478,11 @@ def crawl(
     if arc_urls_seen is None:
         arc_urls_seen = set()
 
+    inner_text_pw = None
     try:
         if use_playwright:
             from .downloader import fetch_playwright
-            html = fetch_playwright(url, **(playwright_opts or {}))
+            html, inner_text_pw = fetch_playwright(url, **(playwright_opts or {}))
         else:
             resp = fetch(url, session)
             html = resp.text
@@ -491,7 +492,7 @@ def crawl(
         _log(f"  ✗ {url} : {e}")
         return
 
-    text = extract_text(html)
+    text = inner_text_pw if inner_text_pw is not None else extract_text_md(html)
     page_folder, page_name = url_to_page_dest(url, dest)
 
     if _is_redirect(html, text):
@@ -512,27 +513,30 @@ def crawl(
             _log(f"  ✅ data/{path.name}")
 
         elif mode == 2:
-            path = save_mhtml(html, url, page_folder / 'data', f"{page_name}.mhtml")
+            data_dir = page_folder / 'data'
+            try:
+                from .downloader import mhtml_playwright
+                data_dir.mkdir(parents=True, exist_ok=True)
+                path = data_dir / f"{page_name}.mhtml"
+                if not path.exists():
+                    pw_opts = {k: v for k, v in (playwright_opts or {}).items()
+                               if k in ('wait_selector', 'delay', 'viewport', 'cookies')}
+                    path.write_text(mhtml_playwright(url, **pw_opts), encoding='utf-8')
+            except ImportError:
+                path = save_mhtml(html, url, data_dir, f"{page_name}.mhtml")
             _log(f"  ✅ data/{path.name}")
 
         elif mode == 3:
-            folder = page_folder / 'data'
-            folder.mkdir(parents=True, exist_ok=True)
-            (folder / 'index.html').write_text(html, encoding='utf-8')
-            download_assets(html, url, folder, session)
-            _log(f"  ✅ data/ (HTML + assets)")
-
-        elif mode == 4:
             path = save_json(extract_structured(html, url), page_folder / 'data', f"{page_name}.json")
             _log(f"  ✅ data/{path.name}")
 
-        elif mode == 5:
+        elif mode == 4:
             img_urls = extract_image_urls(html, url)
             count = _download_images(img_urls, page_folder / 'images', session,
                                      image_urls_seen, ext_filter=img_ext_filter, log=log)
             _log(f"  ✅ {count} image(s) → images/")
 
-        elif mode == 7:
+        elif mode == 6:
             from .downloader import extract_video_page_urls
             vid_urls = extract_video_urls(html, url)
             vid_dest = page_folder / 'videos'
@@ -556,7 +560,7 @@ def crawl(
                     if not _download_ytdlp(url, vid_dest, video_urls_seen, log=log):
                         _log(f"  ✗ Aucune vidéo récupérée.")
 
-        elif mode == 8:
+        elif mode == 7:
             aud_urls = extract_audio_urls(html, url)
             aud_dest = page_folder / 'audios'
             if aud_urls:
@@ -566,7 +570,7 @@ def crawl(
             else:
                 _log(f"  ⚠ Aucun audio trouvé sur cette page.")
 
-        elif mode == 9:
+        elif mode == 8:
             doc_urls = extract_document_urls(html, url)
             doc_dest = page_folder / 'documents'
             if doc_urls:
@@ -576,7 +580,7 @@ def crawl(
             else:
                 _log(f"  ⚠ Aucun document trouvé sur cette page.")
 
-        elif mode == 10:
+        elif mode == 9:
             arc_urls = extract_archive_urls(html, url)
             arc_dest = page_folder / 'archives'
             if arc_urls:
@@ -586,7 +590,7 @@ def crawl(
             else:
                 _log(f"  ⚠ Aucune archive trouvée sur cette page.")
 
-        elif mode == 11:
+        elif mode == 10:
             try:
                 from .downloader import screenshot_playwright
                 pw_opts = playwright_opts or {'viewport': (1920, 1080), 'delay': 2}

@@ -81,8 +81,9 @@ def _ask_choice(question: str, options: list[tuple[int, str]], default: int = 1)
 def _ask_modes(question: str, options: list[tuple[int, str]]) -> list[int]:
     """Affiche des modes numérotés, accepte une sélection multiple (ex: 1,3)."""
     print(f'\n{question}')
+    width = max(len(str(o[0])) for o in options)
     for num, label in options:
-        print(f"  [{num}] {label}")
+        print(f"  [{num:{width}}] {label}")
     raw = _input('\n  Mode(s) (ex: 1  ou  1,3  pour plusieurs) : ').strip()
     selected = []
     for part in raw.split(','):
@@ -341,28 +342,26 @@ def _handle_general(url: str, dest: Path, session: requests.Session,
     modes = _ask_modes(
         "Que voulez-vous récupérer ? (plusieurs choix possibles)",
         [
-            (1, "Texte propre        — contenu lisible sans le code HTML (.txt)\n"
-                "                       idéal pour lire un article ou l'analyser"),
-            (2, "MHTML               — page HTML archivée au format MHTML (.mhtml)\n"
-                "                       format standard ouvrable directement dans Chrome/Edge"),
-            (3, "Téléchargement complet — HTML + images + CSS + polices (dossier)\n"
-                "                       copie locale que vous pouvez ouvrir sans internet"),
-            (4, "Données structurées — titre, titres de section, paragraphes, images (.json)\n"
-                "                       pratique pour alimenter une base de données"),
-            (5, "Images seulement    — toutes les images de la page (jpg, png, svg, webp...)\n"
-                "                       sauvegardées dans un sous-dossier images/"),
-            (6, "Arborescence URLs   — liste tous les liens de la page avec leur hiérarchie (.txt)\n"
-                "                       utile pour cartographier la structure d'un site"),
-            (7, "Vidéos              — télécharge les vidéos de la page (mp4, webm...)\n"
-                "                       essaie d'abord l'extraction directe, puis yt-dlp"),
-            (8, "Audios              — télécharge les fichiers audio de la page (mp3, wav...)\n"
-                "                       extraction directe depuis les balises et les scripts"),
-            (9, "Documents           — télécharge les fichiers liés (pdf, docx, xlsx...)\n"
-                "                       liens directs depuis les balises <a>"),
-            (10,"Archives            — télécharge les archives liées (zip, rar, 7z...)\n"
-                "                       liens directs depuis les balises <a>"),
-            (11,"Screenshot          — capture d'écran de la page telle qu'affichée (.png)\n"
-                "                       utilise Playwright — fonctionne même si requests est sélectionné"),
+            (1,  "Texte propre        — contenu lisible sans le code HTML (.txt)\n"
+                 "                       idéal pour lire un article ou l'analyser"),
+            (2,  "MHTML               — page HTML archivée au format MHTML (.mhtml)\n"
+                 "                       format standard ouvrable directement dans Chrome/Edge"),
+            (3,  "Données structurées — titre, titres de section, paragraphes, images (.json)\n"
+                 "                       pratique pour alimenter une base de données"),
+            (4,  "Images seulement    — toutes les images de la page (jpg, png, svg, webp...)\n"
+                 "                       sauvegardées dans un sous-dossier images/"),
+            (5,  "Arborescence URLs   — liste tous les liens de la page avec leur hiérarchie (.txt)\n"
+                 "                       utile pour cartographier la structure d'un site"),
+            (6,  "Vidéos              — télécharge les vidéos de la page (mp4, webm...)\n"
+                 "                       essaie d'abord l'extraction directe, puis yt-dlp"),
+            (7,  "Audios              — télécharge les fichiers audio de la page (mp3, wav...)\n"
+                 "                       extraction directe depuis les balises et les scripts"),
+            (8,  "Documents           — télécharge les fichiers liés (pdf, docx, xlsx...)\n"
+                 "                       liens directs depuis les balises <a>"),
+            (9,  "Archives            — télécharge les archives liées (zip, rar, 7z...)\n"
+                 "                       liens directs depuis les balises <a>"),
+            (10, "Screenshot          — capture d'écran de la page telle qu'affichée (.png)\n"
+                 "                       utilise Playwright — fonctionne même si requests est sélectionné"),
         ],
     )
 
@@ -375,59 +374,67 @@ def _handle_general(url: str, dest: Path, session: requests.Session,
     aud_ext_filter: set | None = None
     doc_ext_filter: set | None = None
     arc_ext_filter: set | None = None
-    if 5 in modes:
+    if 4 in modes:
         img_ext_filter = _ask_ext_filter("d'images", [
-            ('JPG / JPEG', ['.jpg', '.jpeg'], 'photo compressée — le plus courant'),
-            ('PNG',        ['.png'],          'image avec transparence'),
-            ('GIF',        ['.gif'],          'animation'),
-            ('SVG',        ['.svg'],          'graphique vectoriel (logo, icône)'),
-            ('WEBP',       ['.webp'],         'format moderne compressé'),
-            ('BMP',        ['.bmp'],          'bitmap non compressé'),
-            ('ICO',        ['.ico'],          'icône de site'),
-            ('AVIF',       ['.avif'],         'format moderne haute qualité'),
+            ('JPG / JPEG',   ['.jpg', '.jpeg'],        'photo compressée — le plus courant'),
+            ('PNG',          ['.png'],                 'image avec transparence'),
+            ('GIF',          ['.gif'],                 'animation'),
+            ('SVG',          ['.svg'],                 'graphique vectoriel (logo, icône)'),
+            ('WEBP',         ['.webp'],                'format moderne compressé'),
+            ('AVIF',         ['.avif'],                'format moderne haute qualité'),
+            ('TIFF / TIF',   ['.tiff', '.tif'],        'haute résolution — impression'),
+            ('APNG',         ['.apng'],                'PNG animé'),
+            ('BMP',          ['.bmp'],                 'bitmap non compressé'),
+            ('ICO',          ['.ico'],                 'icône de site'),
+        ])
+    if 6 in modes:
+        vid_ext_filter = _ask_ext_filter("de vidéos", [
+            ('MP4',  ['.mp4'],        'le plus universel — recommandé'),
+            ('WEBM', ['.webm'],       'format web ouvert'),
+            ('MOV',  ['.mov'],        'QuickTime — Apple'),
+            ('AVI',  ['.avi'],        'format classique Windows'),
+            ('MKV',  ['.mkv'],        'conteneur flexible haute qualité'),
+            ('M4V',  ['.m4v'],        'iTunes — Apple'),
+            ('OGV',  ['.ogv'],        'OGG vidéo — format ouvert'),
+            ('FLV',  ['.flv'],        'Flash Video — ancien'),
         ])
     if 7 in modes:
-        vid_ext_filter = _ask_ext_filter("de vidéos", [
-            ('MP4',  ['.mp4'],  'le plus universel — recommandé'),
-            ('WEBM', ['.webm'], 'format web ouvert'),
-            ('MOV',  ['.mov'],  'QuickTime — Apple'),
-            ('AVI',  ['.avi'],  'format classique Windows'),
-            ('MKV',  ['.mkv'],  'conteneur flexible haute qualité'),
-            ('M4V',  ['.m4v'],  'iTunes — Apple'),
-            ('FLV',  ['.flv'],  'Flash Video — ancien'),
-            ('OGG',  ['.ogg'],  'format ouvert'),
+        aud_ext_filter = _ask_ext_filter("d'audios", [
+            ('MP3',        ['.mp3'],         'le plus universel — recommandé'),
+            ('WAV',        ['.wav'],         'non compressé — haute qualité'),
+            ('FLAC',       ['.flac'],        'sans perte de qualité'),
+            ('AAC',        ['.aac'],         'compression moderne — YouTube, iTunes'),
+            ('OGG',        ['.ogg'],         'OGG audio — Vorbis / Opus'),
+            ('M4A',        ['.m4a'],         'iTunes — Apple'),
+            ('WMA',        ['.wma'],         'Windows Media Audio'),
+            ('OPUS',       ['.opus'],        'format moderne — compression optimale'),
+            ('AIFF',       ['.aiff'],        'non compressé — Apple'),
+            ('ALAC',       ['.alac'],        'sans perte — Apple Lossless'),
+            ('MIDI',       ['.mid', '.midi'],'fichier MIDI — séquenceur'),
         ])
     if 8 in modes:
-        aud_ext_filter = _ask_ext_filter("d'audios", [
-            ('MP3',  ['.mp3'],  'le plus universel — recommandé'),
-            ('WAV',  ['.wav'],  'non compressé — haute qualité'),
-            ('FLAC', ['.flac'], 'sans perte de qualité'),
-            ('AAC',  ['.aac'],  'compression moderne — YouTube, iTunes'),
-            ('M4A',  ['.m4a'],  'iTunes — Apple'),
-            ('WMA',  ['.wma'],  'Windows Media Audio'),
-            ('OPUS', ['.opus'], 'format moderne — compression optimale'),
-            ('AIFF', ['.aiff'], 'non compressé — Apple'),
+        doc_ext_filter = _ask_ext_filter("de documents", [
+            ('PDF',        ['.pdf'],              'format universel — le plus courant'),
+            ('Word',       ['.doc', '.docx'],     'Microsoft Word'),
+            ('Excel',      ['.xls', '.xlsx'],     'Microsoft Excel'),
+            ('PowerPoint', ['.ppt', '.pptx'],     'Microsoft PowerPoint'),
+            ('LibreOffice',['.odt', '.ods', '.odp'], 'suite bureautique libre'),
+            ('EPUB',       ['.epub'],             'ebook — liseuses, Calibre'),
+            ('MOBI',       ['.mobi'],             'ebook Kindle'),
+            ('Texte',      ['.txt', '.rtf'],      'texte brut / enrichi'),
+            ('Données',    ['.xml', '.csv'],      'données structurées'),
         ])
     if 9 in modes:
-        doc_ext_filter = _ask_ext_filter("de documents", [
-            ('PDF',              ['.pdf'],         'format universel — le plus courant'),
-            ('Word',             ['.doc', '.docx'],'Microsoft Word'),
-            ('Excel',            ['.xls', '.xlsx'],'Microsoft Excel'),
-            ('PowerPoint',       ['.ppt', '.pptx'],'Microsoft PowerPoint'),
-            ('LibreOffice',      ['.odt', '.ods', '.odp'], 'suite bureautique libre'),
-            ('EPUB',             ['.epub'],        'ebook — liseuses, Calibre'),
-            ('MOBI',             ['.mobi'],        'ebook Kindle'),
-        ])
-    if 10 in modes:
         arc_ext_filter = _ask_ext_filter("d'archives", [
-            ('ZIP',              ['.zip'],         'le plus universel — recommandé'),
-            ('RAR',              ['.rar'],         'compression avancée'),
-            ('7Z',               ['.7z'],          'compression maximale'),
-            ('TAR / GZ / TGZ',   ['.tar', '.gz', '.tgz'],  'archives Unix / Linux'),
-            ('BZ2 / XZ / TBZ2',  ['.bz2', '.xz', '.tbz2'], 'archives Unix compressées'),
+            ('ZIP',             ['.zip'],              'le plus universel — recommandé'),
+            ('RAR',             ['.rar'],              'compression avancée'),
+            ('7Z',              ['.7z'],               'compression maximale'),
+            ('TAR / GZ / TGZ',  ['.tar', '.gz', '.tgz'],  'archives Unix / Linux'),
+            ('BZ2 / XZ / TBZ2', ['.bz2', '.xz', '.tbz2'], 'archives Unix compressées'),
+            ('ISO / IMG',       ['.iso', '.img'],      'image disque'),
         ])
 
-    # Mode 6 : arborescence — profondeur obligatoire pour avoir des liens
+    # Mode 5 : arborescence — profondeur obligatoire pour avoir des liens
     depth = _ask_depth()
 
     respect_robots = False
@@ -442,7 +449,7 @@ def _handle_general(url: str, dest: Path, session: requests.Session,
         respect_robots = (robots_choice == 2)
 
     url_filter = ''
-    if depth > 0 or 6 in modes:
+    if depth > 0 or 5 in modes:
         filter_choice = _ask_choice(
             "Filtrer les liens à suivre lors du crawl ?",
             [
@@ -455,15 +462,15 @@ def _handle_general(url: str, dest: Path, session: requests.Session,
         if filter_choice == 2:
             url_filter = _input("\n  Mot-clé à chercher dans l'URL : ").strip()
 
-    # Mode 6 : arborescence (traitement séparé, pas dans crawl())
-    if 6 in modes:
+    # Mode 5 : arborescence (traitement séparé, pas dans crawl())
+    if 5 in modes:
         map_depth = depth if depth > 0 else 1
         (progress.console.print if progress else print)('\n⬇  Cartographie des URLs en cours...')
         _crawler.map_urls(url=url, dest=dest, depth=map_depth,
                           session=session, url_filter=url_filter)
 
-    # Modes 1-5 et 7 : crawl normal
-    content_modes = [m for m in modes if m != 6]
+    # Modes 1-4 et 6-10 : crawl normal
+    content_modes = [m for m in modes if m != 5]
     if content_modes:
         (progress.console.print if progress else print)('\n⬇  Scraping en cours...')
         _crawler.crawl(url=url, modes=content_modes, dest=dest, depth=depth,
@@ -580,54 +587,62 @@ def _handle_js(url: str, dest: Path, session: requests.Session,
     arc_ext_filter: set | None = None
     if 5 in modes:
         img_ext_filter = _ask_ext_filter("d'images", [
-            ('JPG / JPEG', ['.jpg', '.jpeg'], 'photo compressée — le plus courant'),
-            ('PNG',        ['.png'],          'image avec transparence'),
-            ('GIF',        ['.gif'],          'animation'),
-            ('SVG',        ['.svg'],          'graphique vectoriel (logo, icône)'),
-            ('WEBP',       ['.webp'],         'format moderne compressé'),
-            ('BMP',        ['.bmp'],          'bitmap non compressé'),
-            ('ICO',        ['.ico'],          'icône de site'),
-            ('AVIF',       ['.avif'],         'format moderne haute qualité'),
+            ('JPG / JPEG',   ['.jpg', '.jpeg'],        'photo compressée — le plus courant'),
+            ('PNG',          ['.png'],                 'image avec transparence'),
+            ('GIF',          ['.gif'],                 'animation'),
+            ('SVG',          ['.svg'],                 'graphique vectoriel (logo, icône)'),
+            ('WEBP',         ['.webp'],                'format moderne compressé'),
+            ('AVIF',         ['.avif'],                'format moderne haute qualité'),
+            ('TIFF / TIF',   ['.tiff', '.tif'],        'haute résolution — impression'),
+            ('APNG',         ['.apng'],                'PNG animé'),
+            ('BMP',          ['.bmp'],                 'bitmap non compressé'),
+            ('ICO',          ['.ico'],                 'icône de site'),
         ])
     if 6 in modes:
         vid_ext_filter = _ask_ext_filter("de vidéos", [
-            ('MP4',  ['.mp4'],  'le plus universel — recommandé'),
-            ('WEBM', ['.webm'], 'format web ouvert'),
-            ('MOV',  ['.mov'],  'QuickTime — Apple'),
-            ('AVI',  ['.avi'],  'format classique Windows'),
-            ('MKV',  ['.mkv'],  'conteneur flexible haute qualité'),
-            ('M4V',  ['.m4v'],  'iTunes — Apple'),
-            ('FLV',  ['.flv'],  'Flash Video — ancien'),
-            ('OGG',  ['.ogg'],  'format ouvert'),
+            ('MP4',  ['.mp4'],        'le plus universel — recommandé'),
+            ('WEBM', ['.webm'],       'format web ouvert'),
+            ('MOV',  ['.mov'],        'QuickTime — Apple'),
+            ('AVI',  ['.avi'],        'format classique Windows'),
+            ('MKV',  ['.mkv'],        'conteneur flexible haute qualité'),
+            ('M4V',  ['.m4v'],        'iTunes — Apple'),
+            ('OGV',  ['.ogv'],        'OGG vidéo — format ouvert'),
+            ('FLV',  ['.flv'],        'Flash Video — ancien'),
         ])
     if 7 in modes:
         aud_ext_filter = _ask_ext_filter("d'audios", [
-            ('MP3',  ['.mp3'],  'le plus universel — recommandé'),
-            ('WAV',  ['.wav'],  'non compressé — haute qualité'),
-            ('FLAC', ['.flac'], 'sans perte de qualité'),
-            ('AAC',  ['.aac'],  'compression moderne — YouTube, iTunes'),
-            ('M4A',  ['.m4a'],  'iTunes — Apple'),
-            ('WMA',  ['.wma'],  'Windows Media Audio'),
-            ('OPUS', ['.opus'], 'format moderne — compression optimale'),
-            ('AIFF', ['.aiff'], 'non compressé — Apple'),
+            ('MP3',        ['.mp3'],         'le plus universel — recommandé'),
+            ('WAV',        ['.wav'],         'non compressé — haute qualité'),
+            ('FLAC',       ['.flac'],        'sans perte de qualité'),
+            ('AAC',        ['.aac'],         'compression moderne — YouTube, iTunes'),
+            ('OGG',        ['.ogg'],         'OGG audio — Vorbis / Opus'),
+            ('M4A',        ['.m4a'],         'iTunes — Apple'),
+            ('WMA',        ['.wma'],         'Windows Media Audio'),
+            ('OPUS',       ['.opus'],        'format moderne — compression optimale'),
+            ('AIFF',       ['.aiff'],        'non compressé — Apple'),
+            ('ALAC',       ['.alac'],        'sans perte — Apple Lossless'),
+            ('MIDI',       ['.mid', '.midi'],'fichier MIDI — séquenceur'),
         ])
     if 8 in modes:
         doc_ext_filter = _ask_ext_filter("de documents", [
-            ('PDF',        ['.pdf'],         'format universel — le plus courant'),
-            ('Word',       ['.doc', '.docx'],'Microsoft Word'),
-            ('Excel',      ['.xls', '.xlsx'],'Microsoft Excel'),
-            ('PowerPoint', ['.ppt', '.pptx'],'Microsoft PowerPoint'),
+            ('PDF',        ['.pdf'],              'format universel — le plus courant'),
+            ('Word',       ['.doc', '.docx'],     'Microsoft Word'),
+            ('Excel',      ['.xls', '.xlsx'],     'Microsoft Excel'),
+            ('PowerPoint', ['.ppt', '.pptx'],     'Microsoft PowerPoint'),
             ('LibreOffice',['.odt', '.ods', '.odp'], 'suite bureautique libre'),
-            ('EPUB',       ['.epub'],        'ebook — liseuses, Calibre'),
-            ('MOBI',       ['.mobi'],        'ebook Kindle'),
+            ('EPUB',       ['.epub'],             'ebook — liseuses, Calibre'),
+            ('MOBI',       ['.mobi'],             'ebook Kindle'),
+            ('Texte',      ['.txt', '.rtf'],      'texte brut / enrichi'),
+            ('Données',    ['.xml', '.csv'],      'données structurées'),
         ])
     if 9 in modes:
         arc_ext_filter = _ask_ext_filter("d'archives", [
-            ('ZIP',             ['.zip'],         'le plus universel — recommandé'),
-            ('RAR',             ['.rar'],         'compression avancée'),
-            ('7Z',              ['.7z'],          'compression maximale'),
+            ('ZIP',             ['.zip'],              'le plus universel — recommandé'),
+            ('RAR',             ['.rar'],              'compression avancée'),
+            ('7Z',              ['.7z'],               'compression maximale'),
             ('TAR / GZ / TGZ',  ['.tar', '.gz', '.tgz'],  'archives Unix / Linux'),
             ('BZ2 / XZ / TBZ2', ['.bz2', '.xz', '.tbz2'], 'archives Unix compressées'),
+            ('ISO / IMG',       ['.iso', '.img'],      'image disque'),
         ])
 
     opts = _ask_playwright_opts()
@@ -645,13 +660,13 @@ def _handle_js(url: str, dest: Path, session: requests.Session,
             print(f"  ✅ data/{path.name}")
 
         if any(m in modes for m in [1, 2, 4, 5, 6, 7, 8, 9]):
-            html = fetch_playwright(url, **opts)
+            html, inner_text_pw = fetch_playwright(url, **opts)
 
             if 1 in modes:
                 path = save_text(html, page_folder / 'data', f"{page_name}.html")
                 print(f"  ✅ data/{path.name}")
             if 2 in modes:
-                path = save_text(extract_text(html), page_folder / 'data', f"{page_name}.txt")
+                path = save_text(inner_text_pw or extract_text(html), page_folder / 'data', f"{page_name}.txt")
                 print(f"  ✅ data/{path.name}")
             if 4 in modes:
                 path = save_json(extract_structured(html, url), page_folder / 'data', f"{page_name}.json")

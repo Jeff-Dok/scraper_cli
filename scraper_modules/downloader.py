@@ -18,20 +18,23 @@ TIMEOUT = 20
 
 IMAGE_EXTS = {
     '.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp',
-    '.bmp', '.ico', '.tga', '.avif',
+    '.bmp', '.ico', '.tga', '.avif', '.tiff', '.tif', '.apng',
 }
 VIDEO_EXTS = {
-    '.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v', '.flv',
+    '.mp4', '.webm', '.ogv', '.mov', '.avi', '.mkv', '.m4v', '.flv',
 }
 AUDIO_EXTS = {
     '.mp3', '.wav', '.flac', '.aac', '.m4a', '.wma', '.opus', '.aiff',
+    '.ogg', '.alac', '.mid', '.midi',
 }
 DOCUMENT_EXTS = {
     '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
     '.odt', '.ods', '.odp', '.epub', '.mobi',
+    '.rtf', '.txt', '.xml', '.csv',
 }
 ARCHIVE_EXTS = {
     '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.tgz', '.tbz2', '.xz',
+    '.iso', '.img',
 }
 ASSET_EXTS = IMAGE_EXTS | VIDEO_EXTS | AUDIO_EXTS | DOCUMENT_EXTS | ARCHIVE_EXTS | {
     '.css', '.js', '.pdf', '.txt', '.json', '.xml',
@@ -53,6 +56,18 @@ def extract_text(html: str) -> str:
     return soup.get_text(separator='\n', strip=True)
 
 
+def extract_text_md(html: str) -> str:
+    """Convertit HTML en texte structuré : tables → colonnes, titres, listes.
+    Meilleur que get_text() pour les pages avec du contenu sémantique."""
+    from markdownify import markdownify
+    soup = BeautifulSoup(html, 'html.parser')
+    for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
+        tag.decompose()
+    md = markdownify(str(soup), heading_style='ATX', bullets='-', strip=['a', 'img'])
+    md = re.sub(r'\n{3,}', '\n\n', md)
+    return md.strip()
+
+
 def extract_structured(html: str, url: str) -> dict:
     soup = BeautifulSoup(html, 'html.parser')
     title = soup.title.string.strip() if soup.title else ''
@@ -62,13 +77,40 @@ def extract_structured(html: str, url: str) -> dict:
         if len(p.get_text(strip=True)) > 30
     ]
     images = list({urljoin(url, img['src']) for img in soup.find_all('img', src=True)})
-    return {
+
+    tables = []
+    for table in soup.find_all('table'):
+        headers = [th.get_text(strip=True) for th in table.find_all('th')]
+        rows = []
+        for tr in table.find_all('tr'):
+            cells = [td.get_text(strip=True) for td in tr.find_all('td')]
+            if not cells:
+                continue
+            if headers and len(headers) == len(cells):
+                rows.append(dict(zip(headers, cells)))
+            else:
+                rows.append(cells)
+        if rows:
+            tables.append({'headers': headers or None, 'rows': rows[:500]})
+
+    lists = []
+    for lst in soup.find_all(['ul', 'ol']):
+        items = [li.get_text(strip=True) for li in lst.find_all('li', recursive=False) if li.get_text(strip=True)]
+        if len(items) >= 3:
+            lists.append(items[:200])
+
+    result = {
         'url': url,
         'title': title,
         'headings': headings[:20],
         'paragraphs': paragraphs[:15],
         'images': images[:30],
     }
+    if tables:
+        result['tables'] = tables[:20]
+    if lists:
+        result['lists'] = lists[:10]
+    return result
 
 
 def extract_image_urls(html: str, base_url: str) -> list[str]:
@@ -112,11 +154,24 @@ def download_assets(html: str, base_url: str, dest: Path, session: requests.Sess
 VIDEO_PAGE_HOSTS = (
     'youtube.com/watch', 'youtu.be/',
     'vimeo.com/',
-    'ign.com/videos/',
     'twitch.tv/',
     'dailymotion.com/video/',
     'streamable.com/',
     'rumble.com/',
+    'tiktok.com/',
+    'facebook.com/watch', 'fb.watch/',
+    'instagram.com/reel/', 'instagram.com/p/',
+    'twitter.com/i/videos', 'x.com/i/videos',
+    'bilibili.com/video/',
+    'nicovideo.jp/watch/',
+    'kick.com/',
+    'odysee.com/@',
+    'reddit.com/r/',
+    'ign.com/videos/',
+    'gamespot.com/videos/',
+    'metacafe.com/watch/',
+    'ted.com/talks/',
+    'loom.com/share/',
 )
 
 
@@ -251,8 +306,9 @@ def fetch_playwright(
     delay: int = 2,
     viewport: tuple = (1280, 720),
     cookies: list | None = None,
-) -> str:
-    """Retourne le HTML de la page après exécution du JavaScript."""
+) -> tuple[str, str]:
+    """Retourne (html, inner_text) de la page après exécution du JavaScript.
+    inner_text suit la disposition visuelle CSS (meilleur que get_text pour les SPAs)."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -272,8 +328,45 @@ def fetch_playwright(
         if delay > 0:
             page.wait_for_timeout(delay * 1000)
         html = page.content()
+        try:
+            inner_text = page.inner_text('body')
+            inner_text = re.sub(r'\n{3,}', '\n\n', inner_text).strip()
+        except Exception:
+            inner_text = extract_text(html)
         browser.close()
-    return html
+    return html, inner_text
+
+
+def mhtml_playwright(
+    url: str,
+    wait_selector: str = None,
+    delay: int = 2,
+    viewport: tuple = (1280, 720),
+    cookies: list | None = None,
+) -> str:
+    """Génère un MHTML complet via Playwright CDP — équivalent à Ctrl+S dans Chrome."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise ImportError(
+            "Playwright n'est pas installé.\n"
+            "Exécutez : pip install playwright && python -m playwright install chromium"
+        )
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(viewport={'width': viewport[0], 'height': viewport[1]})
+        if cookies:
+            context.add_cookies(cookies)
+        page = context.new_page()
+        page.goto(url, wait_until='networkidle', timeout=30000)
+        if wait_selector:
+            page.wait_for_selector(wait_selector, timeout=10000)
+        if delay > 0:
+            page.wait_for_timeout(delay * 1000)
+        cdp = context.new_cdp_session(page)
+        result = cdp.send('Page.captureSnapshot', {'format': 'mhtml'})
+        browser.close()
+    return result['data']
 
 
 def screenshot_playwright(
