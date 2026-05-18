@@ -374,7 +374,7 @@ def mhtml_playwright(
             '**google-analytics.com/**',
         ]
         for pattern in ad_tracking_patterns:
-            page.route(pattern, lambda route, **kwargs: route.abort())
+            page.route(pattern, lambda route: route.abort())
 
         page.goto(url, wait_until='networkidle', timeout=30000)
         if wait_selector:
