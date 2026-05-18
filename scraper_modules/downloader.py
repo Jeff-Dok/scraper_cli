@@ -344,7 +344,10 @@ def mhtml_playwright(
     viewport: tuple = (1280, 720),
     cookies: list | None = None,
 ) -> str:
-    """Génère un MHTML complet via Playwright CDP — équivalent à Ctrl+S dans Chrome."""
+    """Génère un MHTML complet via Playwright CDP — équivalent à Ctrl+S dans Chrome.
+
+    Bloque les domaines publicitaires/tracking/cookies avant chargement et nettoie le DOM
+    (bandeaux OneTrust, iframes cachées) avant capture pour un MHTML propre."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -358,11 +361,58 @@ def mhtml_playwright(
         if cookies:
             context.add_cookies(cookies)
         page = context.new_page()
+
+        # Phase 1: Route interception — bloque les domaines publicitaires/cookies
+        ad_tracking_patterns = [
+            '**doubleclick.net/**',
+            '**googlesyndication.com/**',
+            '**amazon-adsystem.com/**',
+            '**platform.twitter.com/**',
+            '**cookielaw.org/**',
+            '**onetrust.com/**',
+            '**googletagmanager.com/**',
+            '**google-analytics.com/**',
+        ]
+        for pattern in ad_tracking_patterns:
+            page.route(pattern, lambda route, **kwargs: route.abort())
+
         page.goto(url, wait_until='networkidle', timeout=30000)
         if wait_selector:
             page.wait_for_selector(wait_selector, timeout=10000)
         if delay > 0:
             page.wait_for_timeout(delay * 1000)
+
+        # Phase 2: DOM cleanup — supprime les bandeaux/iframes avant capture CDP
+        page.evaluate('''() => {
+            // Bandeaux de consentement OneTrust
+            const onetrust_selectors = [
+                '#onetrust-banner-sdk',
+                '#onetrust-consent-sdk',
+                '.onetrust-pc-dark-filter',
+                '#onetrust-accept-btn-handler',
+            ];
+            onetrust_selectors.forEach(sel => {
+                document.querySelector(sel)?.remove();
+            });
+            document.querySelectorAll('[id^="onetrust"]').forEach(el => el.remove());
+
+            // Iframes cachées et de tracking
+            const iframe_selectors = [
+                'iframe[style*="display: none"]',
+                'iframe[style*="display:none"]',
+                'iframe[name*="Locator"]',
+                'iframe[name*="googlefc"]',
+                'iframe[id*="sandbox"]',
+                'iframe[name="googlefcPresent"]',
+                'iframe[name="cnftComm"]',
+                'iframe[name="__uspapiLocator"]',
+                'iframe[name="__gppLocator"]',
+            ];
+            iframe_selectors.forEach(sel => {
+                document.querySelectorAll(sel).forEach(el => el.remove());
+            });
+        }''')
+
         cdp = context.new_cdp_session(page)
         result = cdp.send('Page.captureSnapshot', {'format': 'mhtml'})
         browser.close()
