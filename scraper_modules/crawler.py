@@ -521,7 +521,7 @@ def crawl(
                 if not path.exists():
                     pw_opts = {k: v for k, v in (playwright_opts or {}).items()
                                if k in ('wait_selector', 'delay', 'viewport', 'cookies')}
-                    path.write_text(mhtml_playwright(url, **pw_opts), encoding='utf-8')
+                    path.write_bytes(mhtml_playwright(url, **pw_opts).encode('utf-8'))
             except ImportError:
                 path = save_mhtml(html, url, data_dir, f"{page_name}.mhtml")
             _log(f"  ✅ data/{path.name}")
