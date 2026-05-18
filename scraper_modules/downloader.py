@@ -383,35 +383,30 @@ def mhtml_playwright(
             page.wait_for_timeout(delay * 1000)
 
         # Phase 2: DOM cleanup — supprime les bandeaux/iframes avant capture CDP
-        page.evaluate('''() => {
-            // Bandeaux de consentement OneTrust
-            const onetrust_selectors = [
-                '#onetrust-banner-sdk',
-                '#onetrust-consent-sdk',
-                '.onetrust-pc-dark-filter',
-                '#onetrust-accept-btn-handler',
-            ];
-            onetrust_selectors.forEach(sel => {
-                document.querySelector(sel)?.remove();
-            });
-            document.querySelectorAll('[id^="onetrust"]').forEach(el => el.remove());
+        try:
+            page.evaluate('''() => {
+                // Bandeaux de consentement OneTrust
+                document.querySelectorAll('[id^="onetrust"]').forEach(el => el.remove());
+                document.querySelector('.onetrust-pc-dark-filter')?.remove();
 
-            // Iframes cachées et de tracking
-            const iframe_selectors = [
-                'iframe[style*="display: none"]',
-                'iframe[style*="display:none"]',
-                'iframe[name*="Locator"]',
-                'iframe[name*="googlefc"]',
-                'iframe[id*="sandbox"]',
-                'iframe[name="googlefcPresent"]',
-                'iframe[name="cnftComm"]',
-                'iframe[name="__uspapiLocator"]',
-                'iframe[name="__gppLocator"]',
-            ];
-            iframe_selectors.forEach(sel => {
-                document.querySelectorAll(sel).forEach(el => el.remove());
-            });
-        }''')
+                // Iframes cachées et de tracking
+                const iframe_selectors = [
+                    'iframe[style*="display: none"]',
+                    'iframe[style*="display:none"]',
+                    'iframe[name*="Locator"]',
+                    'iframe[name*="googlefc"]',
+                    'iframe[id*="sandbox"]',
+                    'iframe[name="googlefcPresent"]',
+                    'iframe[name="cnftComm"]',
+                    'iframe[name="__uspapiLocator"]',
+                    'iframe[name="__gppLocator"]',
+                ];
+                iframe_selectors.forEach(sel => {
+                    document.querySelectorAll(sel).forEach(el => el.remove());
+                });
+            }''')
+        except Exception:
+            pass
 
         cdp = context.new_cdp_session(page)
         result = cdp.send('Page.captureSnapshot', {'format': 'mhtml'})
